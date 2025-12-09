@@ -3,118 +3,242 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My IDE Memo</title>
+    <title>지도 기반 커뮤니티 데모</title>
+    
+    <!-- Tailwind CSS (스타일링) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Leaflet CSS (지도 스타일) -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+     integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+     crossorigin=""/>
+
     <style>
-        html, body {
-            width: 100%;
-            height: 100%;
-            margin: 0;
-            padding: 0;
-            overflow: hidden;
-            background-color: #1e1e1e; /* VS Code 기본 배경색 */
-            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
-        }
-
-        /* 상단 헤더 (파일 탭 느낌) */
-        #header {
-            height: 35px;
-            background-color: #252526;
-            color: #cccccc;
-            display: flex;
-            align-items: center;
-            padding: 0 20px;
-            font-size: 13px;
-            border-bottom: 1px solid #3e3e42;
-            justify-content: space-between;
-        }
-
-        #file-name {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        /* 버튼 스타일 */
-        .btn {
-            background-color: #0e639c;
-            border: none;
-            color: white;
-            padding: 5px 12px;
-            text-align: center;
-            text-decoration: none;
-            display: inline-block;
-            font-size: 12px;
-            cursor: pointer;
-            border-radius: 2px;
-        }
-        .btn:hover { background-color: #1177bb; }
-
-        /* 에디터 영역 */
-        #container {
-            width: 100%;
-            height: calc(100% - 35px); /* 헤더 높이 제외 */
-        }
+        /* 지도가 전체 화면을 채우도록 설정 */
+        #map { height: 100vh; width: 100%; z-index: 0; }
+        .modal { z-index: 1000; }
     </style>
 </head>
-<body>
+<body class="bg-gray-100 font-sans">
 
-    <div id="header">
-        <div id="file-name">
-            <span>📝 Lecture_Notes.md</span>
-            <span style="font-size: 10px; color: #888; margin-left: 10px;">(자동 저장됨)</span>
-        </div>
-        <div>
-            <button class="btn" onclick="downloadFile()">다운로드 (.md)</button>
+    <!-- 상단 네비게이션 -->
+    <nav class="absolute top-0 left-0 w-full bg-white/90 backdrop-blur-sm shadow-md z-50 px-4 py-3 flex justify-between items-center">
+        <h1 class="text-xl font-bold text-blue-600">🗺️ Map Community Demo</h1>
+        <div class="text-sm text-gray-500">지도를 클릭하여 핀을 남겨보세요!</div>
+    </nav>
+
+    <!-- 지도 영역 -->
+    <div id="map"></div>
+
+    <!-- 1. 포스트 작성 모달 (숨김 상태) -->
+    <div id="createModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center modal p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-md p-6 transform transition-all scale-100">
+            <h2 class="text-lg font-bold mb-4">새로운 장소 기록하기</h2>
+            <form id="postForm">
+                <input type="hidden" id="clickLat">
+                <input type="hidden" id="clickLng">
+                
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">제목</label>
+                    <input type="text" id="postTitle" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" required placeholder="장소 이름이나 제목">
+                </div>
+                <div class="mb-4">
+                    <label class="block text-gray-700 text-sm font-bold mb-2">내용</label>
+                    <textarea id="postContent" class="shadow appearance-none border rounded w-full py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline h-24" required placeholder="여기는 어떤 곳인가요?"></textarea>
+                </div>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="closeModal('createModal')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">취소</button>
+                    <button type="submit" class="bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded">등록</button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <div id="container"></div>
+    <!-- 2. 포스트 조회 및 댓글 모달 (숨김 상태) -->
+    <div id="viewModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center modal p-4">
+        <div class="bg-white rounded-lg shadow-xl w-full max-w-lg p-6 max-h-[90vh] overflow-y-auto">
+            <!-- 게시글 내용 -->
+            <div class="border-b pb-4 mb-4">
+                <div class="flex justify-between items-start">
+                    <h2 id="viewTitle" class="text-2xl font-bold text-gray-800"></h2>
+                    <button onclick="deletePost()" class="text-red-500 text-xs hover:underline">삭제</button>
+                </div>
+                <p id="viewDate" class="text-xs text-gray-400 mb-2"></p>
+                <p id="viewContent" class="text-gray-700 whitespace-pre-wrap bg-gray-50 p-3 rounded"></p>
+                <input type="hidden" id="currentPostId">
+            </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+            <!-- 댓글 영역 -->
+            <div>
+                <h3 class="font-bold text-gray-700 mb-2">댓글 <span id="commentCount" class="text-blue-500">0</span></h3>
+                <div id="commentsList" class="space-y-2 mb-4 max-h-40 overflow-y-auto">
+                    <!-- 댓글이 여기에 동적으로 추가됨 -->
+                </div>
+                
+                <!-- 댓글 작성 폼 -->
+                <form id="commentForm" class="flex gap-2">
+                    <input type="text" id="commentInput" class="flex-1 shadow appearance-none border rounded py-2 px-3 text-gray-700 leading-tight focus:outline-none focus:shadow-outline" placeholder="댓글을 입력하세요..." required>
+                    <button type="submit" class="bg-green-500 hover:bg-green-700 text-white font-bold py-2 px-4 rounded text-sm">등록</button>
+                </form>
+            </div>
+
+            <div class="mt-4 text-right">
+                <button onclick="closeModal('viewModal')" class="bg-gray-300 hover:bg-gray-400 text-gray-800 font-bold py-2 px-4 rounded">닫기</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS (지도 로직) -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+     crossorigin=""></script>
 
     <script>
-        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
+        // --- 1. 초기 데이터 및 설정 ---
+        // LocalStorage에서 데이터 불러오기 (없으면 빈 배열)
+        let posts = JSON.parse(localStorage.getItem('mapPosts')) || [];
+        
+        // 지도 초기화 (기본 위치: 서울 시청 부근)
+        const map = L.map('map').setView([37.5665, 126.9780], 13);
 
-        require(['vs/editor/editor.main'], function() {
-            // 로컬 스토리지에서 저장된 내용 불러오기
-            let savedContent = localStorage.getItem('myMemoContent') || "# 강의 노트\n\n- 이곳에 내용을 작성하세요.\n- VS Code 단축키가 작동합니다.\n- 탭(Tab)으로 들여쓰기가 가능합니다.\n\n```python\nprint('코드 하이라이팅도 지원합니다')\n```";
+        // OpenStreetMap 타일 레이어 추가
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+        }).addTo(map);
 
-            // 에디터 생성
-            var editor = monaco.editor.create(document.getElementById('container'), {
-                value: savedContent,
-                language: 'markdown', // 마크다운 언어 설정 (강의 노트용 추천)
-                theme: 'vs-dark',     // 다크 모드
-                automaticLayout: true, // 창 크기 변경 시 자동 조절
-                fontSize: 14,
-                fontFamily: 'Consolas, "Courier New", monospace',
-                minimap: { enabled: true }, // 우측 미니맵
-                wordWrap: 'on'        // 줄바꿈 설정
+        // 마커들을 담을 레이어 그룹
+        const markersLayer = L.layerGroup().addTo(map);
+
+        // --- 2. 주요 기능 함수들 ---
+
+        // 지도 렌더링: 저장된 포스트를 마커로 표시
+        function renderMapMarkers() {
+            markersLayer.clearLayers(); // 기존 마커 초기화
+            posts.forEach(post => {
+                const marker = L.marker([post.lat, post.lng]).addTo(markersLayer);
+                
+                // 마커 클릭 시 조회 모달 열기
+                marker.on('click', () => {
+                    openViewModal(post.id);
+                });
             });
+        }
 
-            // 내용이 변경될 때마다 로컬 스토리지에 자동 저장 (1초 후)
-            let saveTimeout;
-            editor.onDidChangeModelContent(() => {
-                clearTimeout(saveTimeout);
-                saveTimeout = setTimeout(() => {
-                    localStorage.setItem('myMemoContent', editor.getValue());
-                }, 1000);
+        // 포스트 저장 (LocalStorage 연동)
+        function savePosts() {
+            localStorage.setItem('mapPosts', JSON.stringify(posts));
+            renderMapMarkers();
+        }
+
+        // 모달 제어 함수
+        function openCreateModal(lat, lng) {
+            document.getElementById('clickLat').value = lat;
+            document.getElementById('clickLng').value = lng;
+            document.getElementById('postTitle').value = '';
+            document.getElementById('postContent').value = '';
+            document.getElementById('createModal').classList.remove('hidden');
+        }
+
+        function openViewModal(id) {
+            const post = posts.find(p => p.id === id);
+            if (!post) return;
+
+            document.getElementById('currentPostId').value = post.id;
+            document.getElementById('viewTitle').innerText = post.title;
+            document.getElementById('viewContent').innerText = post.content;
+            document.getElementById('viewDate').innerText = new Date(post.date).toLocaleString();
+            
+            renderComments(post);
+            document.getElementById('viewModal').classList.remove('hidden');
+        }
+
+        function closeModal(modalId) {
+            document.getElementById(modalId).classList.add('hidden');
+        }
+
+        function renderComments(post) {
+            const list = document.getElementById('commentsList');
+            const count = document.getElementById('commentCount');
+            list.innerHTML = '';
+            count.innerText = post.comments.length;
+
+            if (post.comments.length === 0) {
+                list.innerHTML = '<div class="text-sm text-gray-400 text-center py-2">아직 댓글이 없습니다.</div>';
+                return;
+            }
+
+            post.comments.forEach(comment => {
+                const div = document.createElement('div');
+                div.className = 'bg-gray-100 p-2 rounded text-sm';
+                div.innerHTML = `
+                    <div class="text-gray-800">${comment.text}</div>
+                    <div class="text-xs text-gray-400 text-right">${new Date(comment.date).toLocaleDateString()}</div>
+                `;
+                list.appendChild(div);
             });
+        }
 
-            // 전역 변수로 에디터 노출 (다운로드 함수용)
-            window.editorInstance = editor;
+        // --- 3. 이벤트 리스너 ---
+
+        // 지도 클릭 이벤트 -> 작성 모달 열기
+        map.on('click', (e) => {
+            openCreateModal(e.latlng.lat, e.latlng.lng);
         });
 
-        // 파일 다운로드 기능
-        function downloadFile() {
-            const content = window.editorInstance.getValue();
-            const blob = new Blob([content], { type: 'text/markdown' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'Lecture_Notes.md';
-            a.click();
-            URL.revokeObjectURL(url);
+        // 포스트 작성 폼 제출
+        document.getElementById('postForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const title = document.getElementById('postTitle').value;
+            const content = document.getElementById('postContent').value;
+            const lat = parseFloat(document.getElementById('clickLat').value);
+            const lng = parseFloat(document.getElementById('clickLng').value);
+
+            const newPost = {
+                id: Date.now(), // 유니크 ID로 시간 사용
+                lat,
+                lng,
+                title,
+                content,
+                date: new Date().toISOString(),
+                comments: []
+            };
+
+            posts.push(newPost);
+            savePosts();
+            closeModal('createModal');
+        });
+
+        // 댓글 작성 폼 제출
+        document.getElementById('commentForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const postId = parseInt(document.getElementById('currentPostId').value);
+            const text = document.getElementById('commentInput').value;
+            
+            const postIndex = posts.findIndex(p => p.id === postId);
+            if (postIndex !== -1) {
+                posts[postIndex].comments.push({
+                    text: text,
+                    date: new Date().toISOString()
+                });
+                savePosts(); // 저장
+                renderComments(posts[postIndex]); // 댓글창 갱신
+                document.getElementById('commentInput').value = ''; // 입력창 비우기
+            }
+        });
+
+        // (추가 기능) 게시글 삭제
+        window.deletePost = function() {
+            if(!confirm('정말 이 마커를 삭제하시겠습니까?')) return;
+            const postId = parseInt(document.getElementById('currentPostId').value);
+            posts = posts.filter(p => p.id !== postId);
+            savePosts();
+            closeModal('viewModal');
         }
+
+        // 초기 렌더링 실행
+        renderMapMarkers();
+
     </script>
 </body>
 </html>
