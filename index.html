@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My IDE Memo</title>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #1e1e1e; /* VS Code 기본 배경색 */
+            font-family: 'Consolas', 'Monaco', 'Courier New', monospace;
+        }
+
+        /* 상단 헤더 (파일 탭 느낌) */
+        #header {
+            height: 35px;
+            background-color: #252526;
+            color: #cccccc;
+            display: flex;
+            align-items: center;
+            padding: 0 20px;
+            font-size: 13px;
+            border-bottom: 1px solid #3e3e42;
+            justify-content: space-between;
+        }
+
+        #file-name {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* 버튼 스타일 */
+        .btn {
+            background-color: #0e639c;
+            border: none;
+            color: white;
+            padding: 5px 12px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 12px;
+            cursor: pointer;
+            border-radius: 2px;
+        }
+        .btn:hover { background-color: #1177bb; }
+
+        /* 에디터 영역 */
+        #container {
+            width: 100%;
+            height: calc(100% - 35px); /* 헤더 높이 제외 */
+        }
+    </style>
+</head>
+<body>
+
+    <div id="header">
+        <div id="file-name">
+            <span>📝 Lecture_Notes.md</span>
+            <span style="font-size: 10px; color: #888; margin-left: 10px;">(자동 저장됨)</span>
+        </div>
+        <div>
+            <button class="btn" onclick="downloadFile()">다운로드 (.md)</button>
+        </div>
+    </div>
+
+    <div id="container"></div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs/loader.min.js"></script>
+
+    <script>
+        require.config({ paths: { 'vs': 'https://cdnjs.cloudflare.com/ajax/libs/monaco-editor/0.44.0/min/vs' }});
+
+        require(['vs/editor/editor.main'], function() {
+            // 로컬 스토리지에서 저장된 내용 불러오기
+            let savedContent = localStorage.getItem('myMemoContent') || "# 강의 노트\n\n- 이곳에 내용을 작성하세요.\n- VS Code 단축키가 작동합니다.\n- 탭(Tab)으로 들여쓰기가 가능합니다.\n\n```python\nprint('코드 하이라이팅도 지원합니다')\n```";
+
+            // 에디터 생성
+            var editor = monaco.editor.create(document.getElementById('container'), {
+                value: savedContent,
+                language: 'markdown', // 마크다운 언어 설정 (강의 노트용 추천)
+                theme: 'vs-dark',     // 다크 모드
+                automaticLayout: true, // 창 크기 변경 시 자동 조절
+                fontSize: 14,
+                fontFamily: 'Consolas, "Courier New", monospace',
+                minimap: { enabled: true }, // 우측 미니맵
+                wordWrap: 'on'        // 줄바꿈 설정
+            });
+
+            // 내용이 변경될 때마다 로컬 스토리지에 자동 저장 (1초 후)
+            let saveTimeout;
+            editor.onDidChangeModelContent(() => {
+                clearTimeout(saveTimeout);
+                saveTimeout = setTimeout(() => {
+                    localStorage.setItem('myMemoContent', editor.getValue());
+                }, 1000);
+            });
+
+            // 전역 변수로 에디터 노출 (다운로드 함수용)
+            window.editorInstance = editor;
+        });
+
+        // 파일 다운로드 기능
+        function downloadFile() {
+            const content = window.editorInstance.getValue();
+            const blob = new Blob([content], { type: 'text/markdown' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'Lecture_Notes.md';
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+    </script>
+</body>
+</html>
